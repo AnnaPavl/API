@@ -10,7 +10,7 @@ client = MongoClient('localhost', 27017)
 db = client['job']
 vacancies = db.vacancies
 
-id = 0
+
 text = input("Укажите профессию, должность или компанию:  ")
 
 params = {'clusters': 'true',
@@ -40,8 +40,7 @@ while True:
         current_vacancy['name'] = vacancy_name
         current_vacancy['link'] = vacancy_link
         current_vacancy['website'] = website
-        current_vacancy['_id'] = id
-        id+=1
+        current_vacancy['_id'] = vacancy_data['href']
         if vacancy_salary == None:
             current_vacancy['min_salary'] = None
             current_vacancy['max_salary'] = None
@@ -119,8 +118,7 @@ while True:
         current_vacancy['name'] = vacancy_name
         current_vacancy['link'] = vacancy_link
         current_vacancy['website'] = website
-        current_vacancy['_id'] = id
-        id+=1
+        current_vacancy['_id'] = children_div['href']
         try:
             vacancies.insert_one(current_vacancy)
         except DuplicateKeyError:
