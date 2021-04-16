@@ -1,7 +1,16 @@
 import requests
 from bs4 import BeautifulSoup as bs
 import pandas as pd
+from pymongo import MongoClient
+from pprint import pprint
 
+from pymongo.errors import DuplicateKeyError
+
+client = MongoClient('localhost', 27017)
+db = client['job']
+vacancies = db.vacancies
+
+id = 0
 text = input("Укажите профессию, должность или компанию:  ")
 
 params = {'clusters': 'true',
@@ -31,26 +40,31 @@ while True:
         current_vacancy['name'] = vacancy_name
         current_vacancy['link'] = vacancy_link
         current_vacancy['website'] = website
+        current_vacancy['_id'] = id
+        id+=1
         if vacancy_salary == None:
-            current_vacancy['min_salary'] = 'Не указана'
-            current_vacancy['max_salary'] = 'Не указана'
-            current_vacancy['currency'] = 'Не указана'
+            current_vacancy['min_salary'] = None
+            current_vacancy['max_salary'] = None
+            current_vacancy['currency'] = None
 
         else:
             salary = vacancy_salary.getText().replace("\u202f", "").split(' ')
             if len(salary) == 3 and salary[0] == 'от':
-                current_vacancy['min_salary'] = salary[1]
-                current_vacancy['max_salary'] = 'Не указана'
+                current_vacancy['min_salary'] = int(salary[1])
+                current_vacancy['max_salary'] = None
                 current_vacancy['currency'] = salary[-1]
             if len(salary) == 3 and salary[0] == 'до':
-                current_vacancy['max_salary'] = salary[1]
-                current_vacancy['min_salary'] = 'Не указана'
+                current_vacancy['max_salary'] = int(salary[1])
+                current_vacancy['min_salary'] = None
                 current_vacancy['currency'] = salary[-1]
             if len(salary) == 4:
-                current_vacancy['max_salary'] = salary[2]
-                current_vacancy['min_salary'] = salary[0]
+                current_vacancy['max_salary'] = int(salary[2])
+                current_vacancy['min_salary'] = int(salary[0])
                 current_vacancy['currency'] = salary[-1]
-        vacancies_hh.append(current_vacancy)
+        try:
+            vacancies.insert_one(current_vacancy)
+        except DuplicateKeyError:
+            continue
     next_page = dom.find('a', {'data-qa': "pager-next"}, {'class': 'bloko-button'})
     if next_page != None:
         next_link = next_page['href']
@@ -73,7 +87,7 @@ response = requests.get(main_url + '/vacancy/search', params=params, headers=hea
 dom = bs(response.text, 'html.parser')
 
 vacancy_list = dom.find_all('div', {'class': 'jNMYr GPKTZ _1tH7S'})
-vacancies_sj = []
+
 while True:
     for vacancy in vacancy_list:
         current_vacancy = {}
@@ -82,22 +96,22 @@ while True:
         vacancy_salary = vacancy.find('span', {'class': '_3mfro _2Wp8I PlM3e _2JVkc _2VHxz'})
         salary = vacancy_salary.getText().replace("\xa0", " ").split(' ')
         if len(salary) == 2:
-            current_vacancy['min_salary'] = 'По договорённости'
-            current_vacancy['max_salary'] = 'По договорённости'
-            current_vacancy['currency'] = 'Не указана'
+            current_vacancy['min_salary'] = None
+            current_vacancy['max_salary'] = None
+            current_vacancy['currency'] = None
 
         else:
             if len(salary) == 4 and salary[0] == 'от':
-                current_vacancy['min_salary'] = salary[1] + salary[2]
-                current_vacancy['max_salary'] = 'Не указана'
+                current_vacancy['min_salary'] = int(salary[1] + salary[2])
+                current_vacancy['max_salary'] = None
                 current_vacancy['currency'] = salary[-1]
             if len(salary) == 4 and salary[0] == 'до':
-                current_vacancy['max_salary'] = salary[1] + salary[2]
-                current_vacancy['min_salary'] = 'Не указана'
+                current_vacancy['max_salary'] = int(salary[1] + salary[2])
+                current_vacancy['min_salary'] = None
                 current_vacancy['currency'] = salary[-1]
             if len(salary) == 6:
-                current_vacancy['max_salary'] = salary[3] + salary[4]
-                current_vacancy['min_salary'] = salary[0] + salary[1]
+                current_vacancy['max_salary'] = int(salary[3] + salary[4])
+                current_vacancy['min_salary'] = int(salary[0] + salary[1])
                 current_vacancy['currency'] = salary[-1]
         vacancy_link = main_url + children_div['href']
         vacancy_name = children_div.getText()
@@ -105,8 +119,13 @@ while True:
         current_vacancy['name'] = vacancy_name
         current_vacancy['link'] = vacancy_link
         current_vacancy['website'] = website
-        vacancies_sj.append(current_vacancy)
-        next_page = dom.find('a', {'rel': "next"},
+        current_vacancy['_id'] = id
+        id+=1
+        try:
+            vacancies.insert_one(current_vacancy)
+        except DuplicateKeyError:
+            continue
+    next_page = dom.find('a', {'rel': "next"},
                              {'class': 'icMQ_ bs_sM _3ze9n f-test-button-dalshe f-test-link-Dalshe'})
     if next_page != None:
         next_link = next_page['href']
@@ -116,8 +135,9 @@ while True:
         continue
     else:
         break
-total_vacancies_sj = pd.DataFrame(vacancies_sj)
-total = vacancies_hh + vacancies_sj
-total_df = pd.DataFrame(total)
-print(total_df)
-print(len(total))
+
+money = int(input('Укажите желаемый уровень дохода:  '))
+
+for vacancy in db.vacancies.find({ '$or': [{'min_salary': { '$gte': money}}, {'max_salary': { '$gte': money}}]} ):
+    pprint(vacancy)
+
